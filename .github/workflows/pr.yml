@@ -1,0 +1,40 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24.x'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Lint check
+      run: npx tsc --noEmit
+      
+    - name: Run tests
+      run: npm test
+      
+    - name: Build check
+      run: npm run build
+      
+    - name: Bundle size check
+      run: |
+        npm run build
+        SIZE=$(stat -c%s "dist/index.js")
+        echo "Bundle size: $SIZE bytes"
+        if [ $SIZE -gt 10240 ]; then
+          echo "::warning::Bundle size is larger than 10KB"
+        fi

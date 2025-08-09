@@ -1,0 +1,55 @@
+{
+	"name": "@rebelstack-io/strog",
+	"version": "0.1.0",
+	"description": "A structured logging library that enables rich runtime metadata tagging using tagged template strings",
+	"type": "module",
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"build": "tsc",
+		"test": "node --test --import=tsx tests/index.test.ts",
+		"test:watch": "node --test --watch --import=tsx tests/index.test.ts",
+		"clean": "rm -rf dist",
+		"prepublishOnly": "npm run clean && npm run build && npm test",
+		"dev": "tsc --watch",
+		"release:patch": "npm version patch && git push --follow-tags",
+		"release:minor": "npm version minor && git push --follow-tags",
+		"release:major": "npm version major && git push --follow-tags",
+		"preversion": "npm test && npm run build"
+	},
+	"keywords": [
+		"logging",
+		"structured-logging",
+		"tagged-templates",
+		"metadata",
+		"typescript"
+	],
+	"author": "Rein Petersen",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/rebelstackio/strog.git"
+	},
+	"bugs": {
+		"url": "https://github.com/rebelstackio/strog/issues"
+	},
+	"homepage": "https://github.com/rebelstackio/strog#readme",
+	"devDependencies": {
+		"@types/node": "^24.2.1",
+		"tsx": "^4.20.3",
+		"typescript": "^5.9.2"
+	},
+	"sideEffects": false
+}
