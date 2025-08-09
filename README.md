@@ -18,6 +18,54 @@ A structured logging library that enables rich runtime metadata tagging using ta
 npm install strog
 ```
 
+## How It Works
+
+Strog appends structured metadata to your log messages using invisible Unicode characters as delimiters. This approach keeps logs human-readable while making them machine-parsable.
+
+### The Magic: Unicode Delimiters
+
+When you create a structured log, Strog appends metadata after your message using special Unicode characters:
+
+```typescript
+const EndpointMetric = StructuredTag('endpoint-metric', ['method', 'endpoint'], false);
+const log = EndpointMetric`GET /users`;
+
+// What you see: "GET /users"  
+// What's actually there: "GET /users\u2009{\"type\":\"endpoint-metric\",\"metadata\":{\"method\":\"GET\",\"endpoint\":\"/users\"}}"
+```
+
+**Two modes:**
+- **Development** (`encode: false`): Uses **Thin Space** (`\u2009`) - metadata is visible in console output
+- **Production** (`encode: true`): Uses **Zero-Width Space** (`\u200B`) - metadata is hidden from console output, base64 encoded and still available to log processors (tails)
+
+### Log Processing & Tail Workers
+
+The same library can be used in log processors to extract the structured data:
+
+```typescript
+// In your log processor (Cloudflare Tail Worker, log aggregator, etc.)
+import { parseStructured, parseMeta } from 'strog';
+
+// Parse a log message that came through your system
+const incomingLog = "GET /users completed in 150ms\u2009{...metadata...}";
+
+const parsed = parseStructured(incomingLog);
+console.log(parsed.raw);     // "GET /users completed in 150ms" (clean message)
+console.log(parsed.parsed);  // { type: "endpoint-metric", metadata: {...} }
+
+// Or just get the metadata
+const metadata = parseMeta(incomingLog);
+if (metadata) {
+  // Send to analytics, metrics, alerting, etc.
+  analytics.track(metadata.type, metadata.metadata);
+}
+```
+
+This enables a powerful workflow:
+1. **Application code** uses Strog to create structured logs that look normal
+2. **Log infrastructure** uses Strog parsing functions to extract rich metadata
+3. **Zero configuration** needed - logs flow through existing systems unchanged
+
 ## Quick Start
 
 ```typescript
@@ -33,15 +81,21 @@ const EndpointMetric = StructuredTag(
 
 // Use it in your logs
 const method = "GET";
-const endpoint = "/users/123";  
+const endpoint = "/users";  
 const time_ms = 150;
 const status_code = 200;
 
 const logMessage = EndpointMetric`${method} ${endpoint} time: ${time_ms}ms code: ${status_code}`;
 console.info(logMessage);
 
-// Output in development: "GET /users/123 time: 150ms code: 200"
-// Output in production: "GET /users/123 time: 150ms code: 200[metadata]"
+/* Output in development:
+ * GET /users time: 150ms code: 200\u2009{"method":"get","endpoint":"/users","time_ms":150,"status_code":200}
+ */
+
+/* Output in production:
+ * GET /users/123 time: 150ms code: 200\u200B[hidden-base64-json-metadata]
+ * or more simply:
+ * GET /users/123 time: 150ms code: 200
 ```
 
 ## API Reference
