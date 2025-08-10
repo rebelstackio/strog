@@ -74,18 +74,18 @@ describe('buildParsedMetadata', () => {
 });
 
 describe('buildStringifiedMetadata', () => {
-	test('should stringify metadata with thin space', () => {
+	test('should stringify metadata with newline', () => {
 		const stringified = buildStringifiedMetadata('test-type', ['value1', 42], ['key1', 'key2'], false);
 		const expectedJson = JSON.stringify({ type: 'test-type', metadata: { key1: 'value1', key2: 42 } });
 		
-		assert.equal(stringified, `\u2009${expectedJson}`);
+		assert.equal(stringified, `\n${expectedJson}`);
 	});
 
 	test('should stringify metadata with encoding', () => {
 		const stringified = buildStringifiedMetadata('test-type', ['value1'], ['key1'], true);
 		const expectedEncoded = btoa(JSON.stringify({ type: 'test-type', metadata: { key1: 'value1' } }));
 		
-		assert.equal(stringified, `\u200B${expectedEncoded}`);
+		assert.equal(stringified, `\n\u200B${expectedEncoded}`);
 	});
 });
 
@@ -101,7 +101,7 @@ describe('StructuredTag', () => {
 		const expectedBase = 'GET /users/123 time: 150ms code: 200';
 		
 		assert.ok(logMessage.startsWith(expectedBase));
-		assert.ok(logMessage.includes('\u2009'));
+		assert.ok(logMessage.includes('\n'));
 	});
 
 	test('should work with encoding', () => {
@@ -109,7 +109,7 @@ describe('StructuredTag', () => {
 		const encodedMessage = EncodedMetric`Test: ${'test-value'}`;
 		
 		assert.ok(encodedMessage.startsWith('Test: test-value'));
-		assert.ok(encodedMessage.includes('\u200B'));
+		assert.ok(encodedMessage.includes('\n\u200B'));
 	});
 });
 
@@ -130,8 +130,8 @@ describe('safeJsonParse', () => {
 });
 
 describe('parseStructured', () => {
-	test('should extract raw message and parse metadata from thin space format', () => {
-		const testMessage = 'Hello world\u2009{"type":"test","metadata":{"key":"value"}}';
+	test('should extract raw message and parse metadata from newline format', () => {
+		const testMessage = 'Hello world\n{"type":"test","metadata":{"key":"value"}}';
 		const parsed = parseStructured(testMessage);
 		
 		assert.equal(parsed.raw, 'Hello world');
@@ -141,7 +141,7 @@ describe('parseStructured', () => {
 	test('should extract raw message and decode metadata from encoded format', () => {
 		const testMetadata = { type: 'test', metadata: { key: 'encoded' } };
 		const encoded = btoa(JSON.stringify(testMetadata));
-		const testMessage = `Hello encoded\u200B${encoded}`;
+		const testMessage = `Hello encoded\n\u200B${encoded}`;
 		const parsed = parseStructured(testMessage);
 		
 		assert.equal(parsed.raw, 'Hello encoded');
@@ -157,7 +157,7 @@ describe('parseStructured', () => {
 	});
 
 	test('should handle malformed encoded data gracefully', () => {
-		const malformedEncoded = 'Test\u200Binvalid-base64!';
+		const malformedEncoded = 'Test\n\u200Binvalid-base64!';
 		const parsed = parseStructured(malformedEncoded);
 		
 		assert.equal(parsed.raw, 'Test');
@@ -167,7 +167,7 @@ describe('parseStructured', () => {
 
 describe('parseMeta', () => {
 	test('should extract metadata', () => {
-		const testMessage = 'Hello world\u2009{"type":"test","metadata":{"key":"value"}}';
+		const testMessage = 'Hello world\n{"type":"test","metadata":{"key":"value"}}';
 		const meta = parseMeta(testMessage);
 		
 		assert.deepEqual(meta, { type: 'test', metadata: { key: 'value' } });
@@ -183,7 +183,7 @@ describe('parseMeta', () => {
 
 describe('extractLog', () => {
 	test('should extract raw message', () => {
-		const testMessage = 'Hello world\u2009{"type":"test","metadata":{"key":"value"}}';
+		const testMessage = 'Hello world\n{"type":"test","metadata":{"key":"value"}}';
 		const log = extractLog(testMessage);
 		
 		assert.equal(log, 'Hello world');

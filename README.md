@@ -20,23 +20,24 @@ npm install strog
 
 ## How It Works
 
-Strog appends structured metadata to your log messages using invisible Unicode characters as delimiters. This approach keeps logs human-readable while making them machine-parsable.
+Strog appends structured metadata to your log messages on a separate line, making logs both human-readable and machine-parsable.
 
-### The Magic: Unicode Delimiters
+### The Magic: Newline Separation
 
-When you create a structured log, Strog appends metadata after your message using special Unicode characters:
+When you create a structured log, Strog appends metadata after your message on a new line:
 
 ```typescript
 const EndpointMetric = StructuredTag('endpoint-metric', ['method', 'endpoint'], false);
 const log = EndpointMetric`GET /users`;
 
-// What you see: "GET /users"  
-// What's actually there: "GET /users\u2009{\"type\":\"endpoint-metric\",\"metadata\":{\"method\":\"GET\",\"endpoint\":\"/users\"}}"
+// What you see: 
+// GET /users
+// {"type":"endpoint-metric","metadata":{"method":"GET","endpoint":"/users"}}
 ```
 
 **Two modes:**
-- **Development** (`encode: false`): Uses **Thin Space** (`\u2009`) - metadata is visible in console output
-- **Production** (`encode: true`): Uses **Zero-Width Space** (`\u200B`) - metadata is hidden from console output, base64 encoded and still available to log processors (tails)
+- **Development** (`encode: false`): Metadata appears as readable JSON on the next line
+- **Production** (`encode: true`): Metadata is base64 encoded and prefixed with zero-width space (`\u200B`) for identification
 
 ### Log Processing & Tail Workers
 
@@ -47,7 +48,7 @@ The same library can be used in log processors to extract the structured data:
 import { parseStructured, parseMeta } from 'strog';
 
 // Parse a log message that came through your system
-const incomingLog = "GET /users completed in 150ms\u2009{...metadata...}";
+const incomingLog = "GET /users completed in 150ms\n{...metadata...}";
 
 const parsed = parseStructured(incomingLog);
 console.log(parsed.raw);     // "GET /users completed in 150ms" (clean message)
@@ -89,13 +90,14 @@ const logMessage = EndpointMetric`${method} ${endpoint} time: ${time_ms}ms code:
 console.info(logMessage);
 
 /* Output in development:
- * GET /users time: 150ms code: 200\u2009{"method":"get","endpoint":"/users","time_ms":150,"status_code":200}
+ * GET /users time: 150ms code: 200
+ * {"type":"endpoint-metric","metadata":{"method":"GET","endpoint":"/users","time_ms":150,"status_code":200}}
  */
 
 /* Output in production:
- * GET /users/123 time: 150ms code: 200\u200B[hidden-base64-json-metadata]
- * or more simply:
- * GET /users/123 time: 150ms code: 200
+ * GET /users time: 150ms code: 200
+ * [zero-width-space]eyJhYmMiOi4uLn0=  (base64 encoded metadata)
+ */
 ```
 
 ## API Reference
@@ -196,8 +198,8 @@ import { StructuredTag } from 'strog';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-// In development: metadata visible as JSON
-// In production: metadata base64 encoded and hidden
+// In development: metadata visible as JSON on separate line
+// In production: metadata base64 encoded on separate line
 const ApiCall = StructuredTag('api-call', ['method', 'url', 'status'], isProduction);
 
 const logMessage = ApiCall`${method} ${url} returned ${status}`;
@@ -206,12 +208,12 @@ console.info(logMessage);
 
 ## Metadata Encoding
 
-Strog uses Unicode characters to separate log messages from metadata:
+Strog separates log messages from metadata using newlines:
 
-- **Thin Space (\\u2009)**: Visible metadata for development
-- **Zero-Width Space (\\u200B)**: Hidden, base64-encoded metadata for production
+- **Development mode**: Metadata appears as readable JSON on the next line
+- **Production mode**: Metadata is base64 encoded and prefixed with zero-width space (`\u200B`) for identification
 
-This approach ensures logs remain readable while enabling automated parsing.
+This approach ensures logs remain readable while enabling automated parsing by log processors.
 
 ## Framework Integration
 

@@ -29,7 +29,7 @@ export function buildParsedMetadata(type: string, placeholders: any[], keys: str
 export function buildStringifiedMetadata(type: string, placeholders: any[], keys: string[], encode = false): string {
 	const parsed = buildParsedMetadata(type, placeholders, keys);
 	const stringified = JSON.stringify(parsed);
-	return encode ? `\u200B${btoa(stringified)}` : `\u2009${stringified}`;
+	return encode ? `\n\u200B${btoa(stringified)}` : `\n${stringified}`;
 }
 
 export function StructuredTag(type: string, keys: string[], encode = false) {
@@ -54,23 +54,18 @@ export function safeJsonParse<T>(json: string): T | void {
 
 export function parseStructured(structuredLogMessage: string): ParsedStructuredLog {
 	let decoded: string | undefined;
-	let raw: string;
-	
-	if (structuredLogMessage.includes('\u200B')) {
-		const parts = structuredLogMessage.split('\u200B');
-		raw = parts[0] || '';
-		const encoded = parts[1];
-		try {
-			decoded = encoded ? atob(encoded) : undefined;
-		} catch {
-			decoded = undefined;
-		}
-	} else if (structuredLogMessage.includes('\u2009')) {
-		const parts = structuredLogMessage.split('\u2009');
-		raw = parts[0] || '';
-		decoded = parts[1];
-	} else {
-		raw = structuredLogMessage;
+	//let raw: string;
+
+	const [ raw, encoded ] = structuredLogMessage.split('\n');
+
+	if ( encoded ) {
+		if ( encoded.startsWith('\u200B') ) {
+			try {
+				decoded = atob ( encoded.substring(1) );
+			} catch {
+				decoded = undefined;
+			}
+		} else decoded = encoded;
 	}
 
 	const parsed = decoded ? safeJsonParse<ParsedMetadata>(decoded) : undefined;
