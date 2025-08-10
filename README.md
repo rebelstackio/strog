@@ -23,35 +23,33 @@ npm install strog
 ```typescript
 import { Strog } from 'strog';
 
-// Create a tagged template function
+// Create your own tagged template function
 const EndpointMetric = Strog('endpoint-metric', ['method', 'endpoint']);
 
 // Use it like a regular template literal
 const method = "GET";
 const endpoint = "/users";
 const log = EndpointMetric`${method} ${endpoint}`;
-// Output: "GET /users⏎{\"type\":\"endpoint-metric\",\"metadata\":{\"method\":\"GET\",\"endpoint\":\"/users\"}}"
+//GET /users⏎{"type":"endpoint-metric","metadata":{"method":"GET","endpoint":"/users"}
 
 // Parse it back
-const parsed = EndpointMetric.parse(log);
-console.log(parsed.message);     // "GET /users"
-console.log(parsed.parsed);  // { type: "endpoint-metric", metadata: { method: "GET", endpoint: "/users" } }
+const parsed = Strog.parse(log);
+console.log(parsed.message);
+// "GET /users"
+console.log(parsed.metadata);
+// {type:"endpoint-metric",metadata:{method:"GET",endpoint:"/users"}
 ```
 
 ## How It Works
 
-Strog appends structured metadata to your log messages using a delimiter, making logs both human-readable and machine-parsable.
-
-### The Magic: Line Separator Delimiter
-
-When you create a structured log, Strog appends metadata after your message using the line separator character (`\u2028`):
+Strog appends structured metadata to your log messages using a delimiter, making logs both human-readable and machine-parsable. When you create a structured log, Strog appends metadata after your message using the default line-separator character (`\u2028`):
 
 ```typescript
 const EndpointMetric = Strog('endpoint-metric', ['method', 'endpoint']);
 const log = EndpointMetric`GET /users`;
 
-// What you see: 
-// GET /users⏎{"type":"endpoint-metric","metadata":{"method":"GET","endpoint":"/users"}}
+// What you see in console when logged: 
+// GET /users {"type":"endpoint-metric","metadata":{"method":"GET","endpoint":"/users"}}
 ```
 
 The default delimiter (`\u2028`) appears as a subtle space but is extremely unlikely to occur naturally in log messages, making parsing reliable. You can also supply your own delimiter as needed.
@@ -96,9 +94,6 @@ const UserAction = Strog('user-action', ['user_id', 'action']);
 
 // With custom delimiter  
 const ApiCall = Strog('api', ['method', 'url'], '||LOG||');
-
-// Multi-character delimiters supported
-const CustomLog = Strog('custom', ['data'], '===SEPARATOR===');
 ```
 
 ### Static Methods
@@ -110,7 +105,7 @@ Creates metadata object from template parameters.
 **Parameters:**
 - `type` (string): The log entry type
 - `placeholders` (any[]): Values from template literal
-- `keys` (string[]): Metadata keys
+- `keys` (string[]): Metadata keys matching your template literal placeholders
 
 **Returns:** `Metadata` object
 
@@ -127,12 +122,12 @@ Parses a structured log message back into components.
 - `message` (string): The structured log message to parse
 - `delimiter` (string, optional): The delimiter used. Defaults to line separator (`\u2028`)
 
-**Returns:** `StructuredLog` object with `message` and `parsed?` properties
+**Returns:** `StructuredLog` object with `message` and `metadata?` properties
 
 ```typescript
 const parsed = Strog.parse(logMessage);
-console.log(parsed.message);     // Original message without metadata
-console.log(parsed.meta);  // Metadata object or undefined
+console.log(parsed.message);  // Original message without metadata
+console.log(parsed.metadata); // Metadata object or undefined
 ```
 
 ## Examples
@@ -151,11 +146,6 @@ const action = 'login';
 const logMessage = UserAction`User ${userId} performed ${action}`;
 console.log(logMessage);
 // Output: "User user_123 performed login⏎{\"type\":\"user-action\",\"metadata\":{\"user_id\":\"user_123\",\"action\":\"login\"}}"
-
-// Parse it back
-const parsed = UserAction.parse(logMessage);
-console.log('Raw message:', parsed.raw);
-console.log('Metadata:', parsed.meta);
 ```
 
 ### Error Logging
@@ -188,20 +178,8 @@ const memoryUsage = process.memoryUsage().heapUsed / 1024 / 1024;
 console.log(PerfMetric`Operation completed: ${operation} took ${endTime - startTime}ms, used ${memoryUsage}MB memory`);
 ```
 
-### Custom Delimiters
 
-```typescript
-// Using a custom delimiter for specific environments
-const devLogger = Strog('debug', ['component', 'action'], ' | DEBUG | ');
-
-// Multi-character delimiters
-const ApiCall = Strog('api-call', ['method', 'url', 'status'], '||API||');
-
-const logMessage = ApiCall`${method} ${url} returned ${status}`;
-// Output: "GET /api/users returned 200||API||{...metadata...}"
-```
-
-## Advanced Usage
+## Log Processing
 
 ### Cloudflare Workers
 
@@ -267,78 +245,22 @@ import { Strog, type Metadata, type StructuredLog, type StrogTagFunction } from 
 const UserEvent: StrogTagFunction = Strog('user-event', ['user_id', 'event_type']);
 
 // Type-safe parsing
-const parsed: StructuredLog = UserEvent.parse(logMessage);
-if (parsed.parsed) {
-  const metadata: Metadata = parsed.parsed;
-  console.log(metadata.type);      // string
-  console.log(metadata.metadata);  // Record<string, any> | undefined
+const parsed = UserEvent.parse(logMessage); // : StructuredLog
+if ( parsed.metadata ) {
+  const metadata = parsed.metadata; // : Metadata
+  console.log(metadata.type);      // : string
+  console.log(metadata.metadata);  // : Record<string, any> | undefined
 }
 ```
 
-## Best Practices
 
-### 1. Consistent Key Naming
-```typescript
-// Use consistent, descriptive keys
-const ApiMetric = Strog('api-metric', ['method', 'endpoint', 'status_code', 'duration_ms']);
-```
-
-### 2. Meaningful Log Types
-```typescript
-// Use descriptive, hierarchical types
-const UserAction = Strog('user-action', ['user_id', 'action']);
-const SystemMetric = Strog('system-metric', ['component', 'metric_type', 'value']);
-const ErrorEvent = Strog('error-event', ['error_type', 'severity', 'context']);
-```
-
-### 3. Environment-Specific Delimiters
-```typescript
-// Different delimiters for different environments
-const delimiter = process.env.NODE_ENV === 'development' ? ' | ' : '\u2028';
-const Logger = Strog('app-log', ['level', 'component'], delimiter);
-```
-
-### 4. Gradual Adoption
-```typescript
-// Start with existing logs and gradually add structure
-console.log('User login successful'); // Before
-
-const AuthEvent = Strog('auth-event', ['user_id', 'result']);
-console.log(AuthEvent`User ${userId} login ${result}`); // After
-```
-
-## Error Handling
-
-Strog includes built-in error handling for common issues:
-
-### Empty Delimiters
-```typescript
-// This will throw an error
-try {
-  const BadLogger = Strog('test', ['key'], ''); // Error: Delimiter cannot be empty string
-} catch (error) {
-  console.error(error.message);
-}
-```
-
-### Malformed JSON
-```typescript
-// Malformed metadata is safely handled
-const malformedLog = 'Hello world\u2028{invalid json}';
-const parsed = Strog.parse(malformedLog);
-
-console.log(parsed.message);     // "Hello world"
-console.log(parsed.metadata);  // undefined (safe fallback)
-```
 
 ## Performance
 
 Strog is designed for minimal performance impact:
 
-- **Zero dependencies**: No external library overhead
-- **Minimal parsing**: Only parses when explicitly requested
-- **String operations**: Uses native JavaScript string methods
-- **Tree shakeable**: Import only what you need
+- **Zero dependencies** : No external library overhead
+- **Minimal and fast**  : designed for speed and ease-of-use
 
 ## License
 

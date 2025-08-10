@@ -6,18 +6,17 @@
  */
 
 export type Metadata = {
-	type: string;
-	metadata: Record<string, any> | undefined;
+	type: string,
+	metadata: Record<string, any> | undefined,
 };
 
 export type StructuredLog = {
-	message: string;
-	metadata?: Metadata;
+	message: string,
+	metadata?: Metadata,
 };
 
 export type StrogTagFunction = {
-	(strings: TemplateStringsArray, ...placeholders: any[]): string;
-	parse: (message: string) => StructuredLog;
+	(strings: TemplateStringsArray, ...placeholders: any[]): string,
 };
 
 function buildMetadataRecord(placeholders: any[], keys: string[]): Record<string, any> {
@@ -42,7 +41,6 @@ export function Strog ( type: string, keys: string[], delimiter: string = '\u202
 		const metadata = Strog.metadata ( type, placeholders, keys );
 		return `${base}${delimiter}${JSON.stringify(metadata)}`;
 	};
-	tagFunction.parse = ( message: string ) => Strog.parse ( message, delimiter );
 	return tagFunction as StrogTagFunction;
 }
 

@@ -157,8 +157,8 @@ describe('Integration tests', () => {
 		// Test that the message contains the human-readable part
 		assert(logMessage.includes(`User ${userId} performed ${action} at ${timestamp}`));
 		
-		// Test that we can parse it back
-		const parsed = UserAction.parse(logMessage);
+		// Test that we can parse it back using static method
+		const parsed = Strog.parse(logMessage);
 		
 		assert.equal(parsed.message, `User ${userId} performed ${action} at ${timestamp}`);
 		assert.equal(parsed.metadata?.type, 'user-action');
@@ -191,13 +191,12 @@ describe('Integration tests', () => {
 		
 		const message1 = StaticTag`Test message: ${'value'}`;
 		
-		// Both parsing methods should give the same result
-		const parsed1 = StaticTag.parse(message1);
-		const parsed2 = Strog.parse(message1, delimiter);
+		// Parse with static method
+		const parsed = Strog.parse(message1, delimiter);
 		
-		assert.deepEqual(parsed1, parsed2);
-		assert.equal(parsed1.metadata?.metadata?.key, 'value');
-		assert.equal(parsed2.metadata?.metadata?.key, 'value');
+		assert.equal(parsed.message, 'Test message: value');
+		assert.equal(parsed.metadata?.type, 'test');
+		assert.equal(parsed.metadata?.metadata?.key, 'value');
 	});
 });
 
