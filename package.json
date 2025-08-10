@@ -1,6 +1,6 @@
 {
 	"name": "@rebelstack-io/strog",
-	"version": "0.1.0",
+	"version": "1.0.0",
 	"description": "A structured logging library that enables rich runtime metadata tagging using tagged template strings",
 	"type": "module",
 	"main": "./dist/index.js",

@@ -2,224 +2,244 @@
  * Test suite for Strog structured logging library
  */
 
-import { test, describe } from 'node:test';
-import { strict as assert } from 'node:assert';
-import {
-	StructuredTag,
-	buildMetadataRecord,
-	buildParsedMetadata,
-	buildStringifiedMetadata,
-	parseStructured,
-	parseMeta,
-	extractLog,
-	safeJsonParse,
-	type ParsedMetadata,
-	type ParsedStructuredLog
+import { describe, test } from 'node:test';
+import assert from 'node:assert';
+import { 
+	Strog,
+	type StructuredLog,
+	type StrogTagFunction
 } from '../src/index.js';
 
-describe('buildMetadataRecord', () => {
-	test('should build metadata record correctly', () => {
-		const placeholders = ['GET', '/users/123', 150, 200];
-		const keys = ['method', 'endpoint', 'time_ms', 'status_code'];
-		const record = buildMetadataRecord(placeholders, keys);
+describe('Strog function factory - static methods', () => {
+	test('should create tag with direct function call', () => {
+		const EndpointMetric = Strog('endpoint-metric', ['method', 'endpoint']);
+		const method = 'GET';
+		const endpoint = '/users/123';
+
+		const logMessage = EndpointMetric`${method} ${endpoint}`;
+
+		assert.equal(typeof logMessage, 'string');
+		assert(logMessage.includes('GET /users/123'));
+	});
+
+	test('should create tag with custom delimiter', () => {
+		const CustomTag = Strog('custom', ['key'], '·');
+		const message = CustomTag`Value: ${'test'}`;
+
+		assert(message.includes('Value: test'));
+		assert(message.includes('·'));
+	});
+
+	test('should create tag with multi-character delimiter', () => {
+		const CustomTag = Strog('custom', ['key'], '===SEPARATOR===');
+		const message = CustomTag`Value: ${'test'}`;
+
+		assert(message.includes('Value: test'));
+		assert(message.includes('===SEPARATOR==='));
+	});
+
+	test('should build metadata object', () => {
+		const result = Strog.metadata('test', ['value'], ['key']);
 		
-		assert.deepEqual(record, {
-			method: 'GET',
-			endpoint: '/users/123',
-			time_ms: 150,
-			status_code: 200
-		});
+		assert.equal(result.type, 'test');
+		assert.equal(result.metadata?.key, 'value');
+	});
+
+	test('should build metadata object with multiple keys', () => {
+		const result = Strog.metadata('test', ['value1', 'value2'], ['key1', 'key2']);
+		
+		assert.equal(result.type, 'test');
+		assert.equal(result.metadata?.key1, 'value1');
+		assert.equal(result.metadata?.key2, 'value2');
+	});
+
+	test('should parse structured message', () => {
+		const testMessage = 'Hello world\u2028{"type":"test","metadata":{"key":"value"}}';
+		const parsed = Strog.parse(testMessage);
+		
+		assert.equal(parsed.message, 'Hello world');
+		assert.deepEqual(parsed.metadata, { type: 'test', metadata: { key: 'value' } });
+	});
+
+	test('should parse message with custom delimiter', () => {
+		const testMessage = 'Hello world·{"type":"test","metadata":{"key":"value"}}';
+		const parsed = Strog.parse(testMessage, '·');
+		
+		assert.equal(parsed.message, 'Hello world');
+		assert.deepEqual(parsed.metadata, { type: 'test', metadata: { key: 'value' } });
+	});
+
+	test('should handle message without metadata', () => {
+		const testMessage = 'Just a regular message';
+		const parsed = Strog.parse(testMessage);
+		
+		assert.equal(parsed.message, 'Just a regular message');
+		assert.equal(parsed.metadata, undefined);
+	});
+});
+
+describe('Strog function factory - basic usage', () => {
+	test('should work with default delimiter', () => {
+		const TestTag = Strog('test', ['key']);
+		
+		const message = TestTag`Message: ${'value'}`;
+		const parsed = Strog.parse(message);
+		
+		assert.equal(parsed.message, 'Message: value');
+		assert.equal(parsed.metadata?.type, 'test');
+		assert.equal(parsed.metadata?.metadata?.key, 'value');
+	});
+
+	test('should work with custom delimiter', () => {
+		const TestTag = Strog('test', ['key'], '|');
+		
+		const message = TestTag`Message: ${'value'}`;
+		const parsed = Strog.parse(message, '|');
+		
+		assert.equal(parsed.message, 'Message: value');
+		assert.equal(parsed.metadata?.type, 'test');
+		assert.equal(parsed.metadata?.metadata?.key, 'value');
+	});
+
+	test('should work with multi-character delimiter', () => {
+		const TestTag = Strog('test', ['key'], '||DELIM||');
+		
+		const message = TestTag`Message: ${'value'}`;
+		const parsed = Strog.parse(message, '||DELIM||');
+		
+		assert.equal(parsed.message, 'Message: value');
+		assert.equal(parsed.metadata?.type, 'test');
+		assert.equal(parsed.metadata?.metadata?.key, 'value');
 	});
 
 	test('should handle more keys than placeholders', () => {
-		const placeholders = ['POST', '/api/data'];
-		const keys = ['method', 'endpoint', 'time_ms'];
-		const record = buildMetadataRecord(placeholders, keys);
+		const TestTag = Strog('test', ['key1', 'key2', 'key3']);
 		
-		assert.deepEqual(record, {
-			method: 'POST',
-			endpoint: '/api/data',
-			time_ms: undefined
-		});
+		const message = TestTag`Values: ${'first'} ${'second'}`;
+		const parsed = Strog.parse(message);
+		
+		assert.equal(parsed.metadata?.metadata?.key1, 'first');
+		assert.equal(parsed.metadata?.metadata?.key2, 'second');
+		assert.equal(parsed.metadata?.metadata?.key3, undefined);
 	});
 
 	test('should handle more placeholders than keys', () => {
-		const placeholders = ['DELETE', '/api/item', 50, 404, 'extra'];
-		const keys = ['method', 'endpoint'];
-		const record = buildMetadataRecord(placeholders, keys);
+		const TestTag = Strog('test', ['key1', 'key2']);
 		
-		assert.deepEqual(record, {
-			method: 'DELETE',
-			endpoint: '/api/item'
-		});
-	});
-});
-
-describe('buildParsedMetadata', () => {
-	test('should build parsed metadata correctly', () => {
-		const placeholders = ['GET', '/users/123', 150, 200];
-		const keys = ['method', 'endpoint', 'time_ms', 'status_code'];
-		const parsed = buildParsedMetadata('endpoint-metric', placeholders, keys);
+		const message = TestTag`Values: ${'first'} ${'second'} ${'third'}`;
+		const parsed = Strog.parse(message);
 		
-		assert.deepEqual(parsed, {
-			type: 'endpoint-metric',
-			metadata: {
-				method: 'GET',
-				endpoint: '/users/123',
-				time_ms: 150,
-				status_code: 200
-			}
-		});
-	});
-});
-
-describe('buildStringifiedMetadata', () => {
-	test('should stringify metadata with newline', () => {
-		const stringified = buildStringifiedMetadata('test-type', ['value1', 42], ['key1', 'key2'], false);
-		const expectedJson = JSON.stringify({ type: 'test-type', metadata: { key1: 'value1', key2: 42 } });
-		
-		assert.equal(stringified, `\n${expectedJson}`);
+		assert.equal(parsed.metadata?.metadata?.key1, 'first');
+		assert.equal(parsed.metadata?.metadata?.key2, 'second');
 	});
 
-	test('should stringify metadata with encoding', () => {
-		const stringified = buildStringifiedMetadata('test-type', ['value1'], ['key1'], true);
-		const expectedEncoded = btoa(JSON.stringify({ type: 'test-type', metadata: { key1: 'value1' } }));
+	test('should handle empty keys array', () => {
+		const EmptyTag = Strog('empty', []);
 		
-		assert.equal(stringified, `\n\u200B${expectedEncoded}`);
-	});
-});
-
-describe('StructuredTag', () => {
-	test('should preserve human-readable base message', () => {
-		const EndpointMetric = StructuredTag('endpoint-metric', ['method', 'endpoint', 'time_ms', 'status_code'], false);
-		const method = 'GET';
-		const endpoint = '/users/123';
-		const time_ms = 150;
-		const status_code = 200;
-
-		const logMessage = EndpointMetric`${method} ${endpoint} time: ${time_ms}ms code: ${status_code}`;
-		const expectedBase = 'GET /users/123 time: 150ms code: 200';
+		const message = EmptyTag`Just a message`;
+		const parsed = Strog.parse(message);
 		
-		assert.ok(logMessage.startsWith(expectedBase));
-		assert.ok(logMessage.includes('\n'));
-	});
-
-	test('should work with encoding', () => {
-		const EncodedMetric = StructuredTag('encoded-metric', ['key'], true);
-		const encodedMessage = EncodedMetric`Test: ${'test-value'}`;
-		
-		assert.ok(encodedMessage.startsWith('Test: test-value'));
-		assert.ok(encodedMessage.includes('\n\u200B'));
-	});
-});
-
-describe('safeJsonParse', () => {
-	test('should parse valid JSON', () => {
-		const validJson = '{"test": true}';
-		const parsed = safeJsonParse(validJson);
-		
-		assert.deepEqual(parsed, { test: true });
-	});
-
-	test('should return undefined for invalid JSON', () => {
-		const invalidJson = '{invalid json}';
-		const parsed = safeJsonParse(invalidJson);
-		
-		assert.equal(parsed, undefined);
-	});
-});
-
-describe('parseStructured', () => {
-	test('should extract raw message and parse metadata from newline format', () => {
-		const testMessage = 'Hello world\n{"type":"test","metadata":{"key":"value"}}';
-		const parsed = parseStructured(testMessage);
-		
-		assert.equal(parsed.raw, 'Hello world');
-		assert.deepEqual(parsed.parsed, { type: 'test', metadata: { key: 'value' } });
-	});
-
-	test('should extract raw message and decode metadata from encoded format', () => {
-		const testMetadata = { type: 'test', metadata: { key: 'encoded' } };
-		const encoded = btoa(JSON.stringify(testMetadata));
-		const testMessage = `Hello encoded\n\u200B${encoded}`;
-		const parsed = parseStructured(testMessage);
-		
-		assert.equal(parsed.raw, 'Hello encoded');
-		assert.deepEqual(parsed.parsed, testMetadata);
-	});
-
-	test('should handle message without metadata', () => {
-		const testMessage = 'Just a regular message';
-		const parsed = parseStructured(testMessage);
-		
-		assert.equal(parsed.raw, 'Just a regular message');
-		assert.equal(parsed.parsed, undefined);
-	});
-
-	test('should handle malformed encoded data gracefully', () => {
-		const malformedEncoded = 'Test\n\u200Binvalid-base64!';
-		const parsed = parseStructured(malformedEncoded);
-		
-		assert.equal(parsed.raw, 'Test');
-		assert.equal(parsed.parsed, undefined);
-	});
-});
-
-describe('parseMeta', () => {
-	test('should extract metadata', () => {
-		const testMessage = 'Hello world\n{"type":"test","metadata":{"key":"value"}}';
-		const meta = parseMeta(testMessage);
-		
-		assert.deepEqual(meta, { type: 'test', metadata: { key: 'value' } });
-	});
-
-	test('should return undefined for no metadata', () => {
-		const testMessage = 'Just a regular message';
-		const meta = parseMeta(testMessage);
-		
-		assert.equal(meta, undefined);
-	});
-});
-
-describe('extractLog', () => {
-	test('should extract raw message', () => {
-		const testMessage = 'Hello world\n{"type":"test","metadata":{"key":"value"}}';
-		const log = extractLog(testMessage);
-		
-		assert.equal(log, 'Hello world');
-	});
-
-	test('should handle message without metadata', () => {
-		const testMessage = 'Just a regular message';
-		const log = extractLog(testMessage);
-		
-		assert.equal(log, 'Just a regular message');
+		assert.equal(parsed.metadata?.type, 'empty');
+		assert.deepEqual(parsed.metadata?.metadata, {});
 	});
 });
 
 describe('Integration tests', () => {
-	test('should work end-to-end', () => {
-		const UserAction = StructuredTag('user-action', ['user_id', 'action', 'timestamp'], false);
-		const userId = 'user123';
+	test('should work end-to-end with direct function calls', () => {
+		const UserAction = Strog('user-action', ['user_id', 'action', 'timestamp']);
+		
+		const userId = 'user_123';
 		const action = 'login';
 		const timestamp = Date.now();
-
-		const actionLog = UserAction`User ${userId} performed ${action} at ${timestamp}`;
-		const parsed = parseStructured(actionLog);
-
-		assert.ok(parsed.raw.includes('User user123 performed login'));
-		assert.equal(parsed.parsed?.type, 'user-action');
-		assert.equal(parsed.parsed?.metadata?.user_id, 'user123');
-		assert.equal(parsed.parsed?.metadata?.action, 'login');
-		assert.equal(parsed.parsed?.metadata?.timestamp, timestamp);
+		
+		const logMessage = UserAction`User ${userId} performed ${action} at ${timestamp}`;
+		
+		// Test that the message contains the human-readable part
+		assert(logMessage.includes(`User ${userId} performed ${action} at ${timestamp}`));
+		
+		// Test that we can parse it back
+		const parsed = UserAction.parse(logMessage);
+		
+		assert.equal(parsed.message, `User ${userId} performed ${action} at ${timestamp}`);
+		assert.equal(parsed.metadata?.type, 'user-action');
+		assert.equal(parsed.metadata?.metadata?.user_id, userId);
+		assert.equal(parsed.metadata?.metadata?.action, action);
+		assert.equal(parsed.metadata?.metadata?.timestamp, timestamp);
 	});
 
-	test('should handle empty keys array', () => {
-		const EmptyTag = StructuredTag('empty', [], false);
-		const emptyMessage = EmptyTag`Just text`;
-		const parsed = parseStructured(emptyMessage);
+	test('should work end-to-end with static methods', () => {
+		const UserAction = Strog('user-action', ['user_id', 'action', 'timestamp']);
 		
-		assert.equal(parsed.raw, 'Just text');
-		assert.deepEqual(parsed.parsed?.metadata, {});
+		const userId = 'user_456';
+		const action = 'logout';
+		const timestamp = Date.now();
+		
+		const logMessage = UserAction`User ${userId} performed ${action} at ${timestamp}`;
+		
+		// Test parsing with static method
+		const parsed = Strog.parse(logMessage);
+		
+		assert.equal(parsed.metadata?.type, 'user-action');
+		assert.equal(parsed.metadata?.metadata?.user_id, userId);
+		assert.equal(parsed.metadata?.metadata?.action, action);
+		assert.equal(parsed.metadata?.metadata?.timestamp, timestamp);
+	});
+
+	test('should maintain consistency between tag and static parsing', () => {
+		const delimiter = '||';
+		const StaticTag = Strog('test', ['key'], delimiter);
+		
+		const message1 = StaticTag`Test message: ${'value'}`;
+		
+		// Both parsing methods should give the same result
+		const parsed1 = StaticTag.parse(message1);
+		const parsed2 = Strog.parse(message1, delimiter);
+		
+		assert.deepEqual(parsed1, parsed2);
+		assert.equal(parsed1.metadata?.metadata?.key, 'value');
+		assert.equal(parsed2.metadata?.metadata?.key, 'value');
+	});
+});
+
+describe('Edge cases and error handling', () => {
+	test('should handle delimiter appearing in message', () => {
+		const TestTag = Strog('test', ['key'], '|');
+		
+		const message = TestTag`Message with | delimiter: ${'value'}`;
+		const parsed = Strog.parse(message, '|');
+		
+		// Should find the LAST occurrence of delimiter
+		assert.equal(parsed.metadata?.metadata?.key, 'value');
+	});
+
+	test('should handle multi-character delimiter appearing in message', () => {
+		const TestTag = Strog('test', ['key'], '||SEP||');
+		
+		const message = TestTag`Message with ||SEP|| in content: ${'value'}`;
+		const parsed = Strog.parse(message, '||SEP||');
+		
+		// Should find the LAST occurrence of multi-character delimiter
+		assert.equal(parsed.metadata?.metadata?.key, 'value');
+		assert(parsed.message.includes('||SEP||')); // The delimiter should appear in the message part
+	});
+
+	test('should handle malformed JSON in metadata', () => {
+		const malformedMessage = 'Hello world\u2028{invalid json}';
+		const parsed = Strog.parse(malformedMessage);
+		
+		assert.equal(parsed.message, 'Hello world');
+		assert.equal(parsed.metadata, undefined);
+	});
+
+	test('should reject empty delimiter', () => {
+		// Should throw error when creating a tag with empty delimiter
+		assert.throws(() => {
+			Strog('test', ['key'], '');
+		}, /Delimiter cannot be empty string/);
+		
+		// Should throw error when parsing with empty delimiter
+		assert.throws(() => {
+			Strog.parse('some message', '');
+		}, /Delimiter cannot be empty string/);
 	});
 });
